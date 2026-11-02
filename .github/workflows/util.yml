@@ -15,11 +15,11 @@ jobs:
       - name: Full official grade
         run: |
           set -o pipefail
-          make grade TOOLPREFIX=riscv64-linux-gnu- 2>&1 | tee grade.log
+          make grade TOOLPREFIX=riscv64-linux-gnu- 2>&1 | tee util-grade.txt
           python3 - <<'PY'
           import re
           from pathlib import Path
-          text=Path('grade.log').read_text()
+          text=Path('util-grade.txt').read_text()
           matches=re.findall(r'Score:\s*(\d+)\s*/\s*(\d+)',text)
           assert matches and matches[-1][0]==matches[-1][1],text
           PY
@@ -28,5 +28,5 @@ jobs:
         with:
           name: util-2026-results
           path: |
-            grade.log
+            util-grade.txt
             xv6.out*
