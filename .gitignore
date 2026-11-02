@@ -21,3 +21,6 @@ barrier
 *.pcap
 TAGS
 /fs.img.bk
+
+._*
+grade.log

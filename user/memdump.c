@@ -60,6 +60,45 @@ main(int argc, char *argv[])
 void
 memdump(char *fmt, char *data, int len)
 {
-  // Your code here.  `data` holds `len` valid bytes.
+  char *end = data + len;
+  for (; *fmt; fmt++) {
+    int width;
+    int number;
+    short half;
+    uint64 pointer;
+    char *terminator;
+    switch (*fmt) {
+    case 'i': width = sizeof(number); break;
+    case 'h': width = sizeof(half); break;
+    case 'p':
+    case 's': width = sizeof(pointer); break;
+    case 'c': width = 1; break;
+    case 'S':
+      terminator = data;
+      while (terminator < end && *terminator) terminator++;
+      if (terminator == end) {
+        fprintf(2, "memdump: not enough data\n");
+        return;
+      }
+      width = terminator - data + 1;
+      break;
+    default:
+      fprintf(2, "memdump: unknown format %c\n", *fmt);
+      return;
+    }
+    if (end - data < width) {
+      fprintf(2, "memdump: not enough data\n");
+      return;
+    }
+    switch (*fmt) {
+    case 'i': memmove(&number, data, width); printf("%d\n", number); break;
+    case 'h': memmove(&half, data, width); printf("%d\n", half); break;
+    case 'p': memmove(&pointer, data, width); printf("%lx\n", pointer); break;
+    case 's': memmove(&pointer, data, width); printf("%s\n", (char *)pointer); break;
+    case 'c': printf("%c\n", *data); break;
+    case 'S': printf("%s\n", data); break;
+    }
+    data += width;
+  }
 
 }

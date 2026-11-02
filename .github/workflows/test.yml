@@ -1,4 +1,8 @@
-on: [push, pull_request]
+on:
+  push:
+    branches: [util, syscall, pgtbl, traps, cow, net, lock]
+  pull_request:
+
 
 jobs:
   linux:
