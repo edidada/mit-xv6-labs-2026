@@ -66,7 +66,7 @@ memdump(char *fmt, char *data, int len)
     int number;
     short half;
     uint64 pointer;
-    char *terminator;
+    char *terminator = data;
     switch (*fmt) {
     case 'i': width = sizeof(number); break;
     case 'h': width = sizeof(half); break;
