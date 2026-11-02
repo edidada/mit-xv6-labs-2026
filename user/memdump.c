@@ -76,11 +76,7 @@ memdump(char *fmt, char *data, int len)
     case 'S':
       terminator = data;
       while (terminator < end && *terminator) terminator++;
-      if (terminator == end) {
-        fprintf(2, "memdump: not enough data\n");
-        return;
-      }
-      width = terminator - data + 1;
+      width = terminator - data + (terminator < end ? 1 : 0);
       break;
     default:
       fprintf(2, "memdump: unknown format %c\n", *fmt);
@@ -96,7 +92,10 @@ memdump(char *fmt, char *data, int len)
     case 'p': memmove(&pointer, data, width); printf("%lx\n", pointer); break;
     case 's': memmove(&pointer, data, width); printf("%s\n", (char *)pointer); break;
     case 'c': printf("%c\n", *data); break;
-    case 'S': printf("%s\n", data); break;
+    case 'S':
+      for (char *p = data; p < terminator; p++) printf("%c", *p);
+      printf("\n");
+      break;
     }
     data += width;
   }
