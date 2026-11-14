@@ -231,6 +231,7 @@ endif
 
 ifeq ($(LAB),cow)
 UPROGS += \
+	$U/_cowextra\
 	$U/_cowtest
 endif
 

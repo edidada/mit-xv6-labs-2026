@@ -22,6 +22,21 @@ jobs:
           assert re.search(r'Score:\s*130/130',Path('cow-grade.txt').read_text())
           assert 'ALL TESTS PASSED' in Path('xv6.out').read_text()
           PY
+      - name: Independent sharing, cross-page copyout, lazy holes and exhaustion
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          from gradelib import Runner, save, shell_script, test, run_tests
+          Path('evidence').mkdir(exist_ok=True)
+          r=Runner(save('evidence/cow-runtime.txt'))
+          @test(1, 'independent cow boundaries')
+          def test_extra():
+              r.run_qemu(shell_script(['cowtest','cowextra']),timeout=180)
+              r.match('^ALL COW TESTS PASSED','^cowextra: PASS 32 fork-copyout cases, lazy isolation and OOM fault',no=['cowextra: FAIL','panic:','OOM write unexpectedly'])
+              Path('evidence/commit.txt').write_text(subprocess.check_output(['git','rev-parse','HEAD'],text=True))
+          run_tests()
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -29,3 +44,4 @@ jobs:
           path: |
             cow-grade.txt
             xv6.out*
+            evidence/
