@@ -61,9 +61,15 @@ main(void)
   // Real exhaustion: retain an unwritten shared page, use all free pages,
   // then a COW write must terminate this child rather than corrupt the parent.
   target[0] = 123;
+  int sync[2];
+  check(pipe(sync) == 0);
   pid = fork();
   check(pid >= 0);
   if (pid == 0) {
+    close(sync[1]);
+    char token;
+    check(read(sync[0], &token, 1) == 1);
+    close(sync[0]);
     while (sbrk(PGSIZE) != (char *)-1) { }
     // A failed new page-table allocation can leave one free physical page.
     // Pipe buffers consume that tail without needing new user page tables.
@@ -75,6 +81,12 @@ main(void)
     printf("cowextra: OOM write unexpectedly returned\n");
     exit(1);
   }
+  close(sync[0]);
+  // Resolve the parent's stack before the child consumes every free page.
+  // Otherwise wait's status copyout could legitimately fail before reaping.
+  char token = 'x';
+  check(write(sync[1], &token, 1) == 1);
+  close(sync[1]);
   check(wait(&status) == pid && status == -1);
   check(target[0] == 123);
   printf("cowextra: PASS 32 fork-copyout cases, lazy isolation and OOM fault\n");
