@@ -12,6 +12,7 @@ target remote :26000
 break kfork
 continue
 finish
+disable 1
 python
 import gdb,struct,json
 inf=gdb.selected_inferior()
@@ -70,7 +71,8 @@ quit
 '''
 Path('evidence/sharing.gdb').write_text(commands)
 with Path('evidence/sharing-qemu.txt').open('w') as out:
-    q=subprocess.Popen(['make','qemu-gdb','TOOLPREFIX=riscv64-linux-gnu-','CPUS=1','GDBPORT=26000'],stdout=out,stderr=subprocess.STDOUT,start_new_session=True)
+    q=subprocess.Popen(['make','qemu-gdb','TOOLPREFIX=riscv64-linux-gnu-','CPUS=1','GDBPORT=26000'],stdin=subprocess.PIPE,stdout=out,stderr=subprocess.STDOUT,start_new_session=True)
+    q.stdin.write(b"cowextra\n");q.stdin.flush()
     try:
         for _ in range(100):
             if q.poll() is not None:raise RuntimeError('QEMU exited')
@@ -83,6 +85,9 @@ with Path('evidence/sharing-qemu.txt').open('w') as out:
         Path('evidence/sharing-gdb.txt').write_text(r.stdout+r.stderr)
         assert r.returncode==0,r.stdout+r.stderr
         assert Path('evidence/sharing.json').exists()
+    except subprocess.TimeoutExpired as exc:
+        Path('evidence/sharing-gdb.txt').write_bytes((exc.stdout or b'')+(exc.stderr or b''))
+        raise
     finally:
         os.killpg(q.pid,signal.SIGTERM);q.wait(timeout=10)
 PY
