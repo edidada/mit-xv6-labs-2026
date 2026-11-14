@@ -26,10 +26,13 @@ jobs:
       - name: Independent sandbox boundaries
         run: |
           python3 - <<'PY'
-          from gradelib import Runner, save, shell_script
+          from gradelib import Runner, save, shell_script, test, run_tests
           r=Runner(save('evidence-sandbox-extra.txt'))
-          r.run_qemu(shell_script(['sbextra', 'echo EXTRADONE'], 'EXTRADONE'))
-          r.match('^sbextra: PASS 96 isolated scenarios', no=['sbextra: FAIL', 'panic:'])
+          @test(1, 'sandbox independent boundaries')
+          def extra():
+              r.run_qemu(shell_script(['sbextra', 'echo EXTRADONE'], 'EXTRADONE'))
+              r.match('^sbextra: PASS 96 isolated scenarios', no=['sbextra: FAIL', 'panic:'])
+          run_tests()
           PY
       - name: GDB normal and deliberate null-load experiment
         run: bash scripts/diagnose_syscall.sh
