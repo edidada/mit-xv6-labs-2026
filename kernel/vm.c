@@ -298,30 +298,28 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
-  pte_t *pte;
-  uint64 pa, i;
-  uint flags;
-  char *mem;
-
+  uint64 i;
   for (i = 0; i < sz; i += PGSIZE) {
-    if ((pte = walk(old, i, 0)) == 0)
-      continue; // page table entry hasn't been allocated
-    if ((*pte & PTE_V) == 0)
-      continue; // physical page hasn't been allocated
-    pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if ((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char *)pa, PGSIZE);
-    if (mappages(new, i, PGSIZE, (uint64)mem, flags) != 0) {
-      kfree(mem);
+    pte_t *pte = walk(old, i, 0);
+    if (!pte || !(*pte & PTE_V))
+      continue; // preserve lazy holes
+    uint64 pa = PTE2PA(*pte);
+    uint flags = PTE_FLAGS(*pte);
+    if (flags & PTE_W)
+      flags = (flags & ~PTE_W) | PTE_COW;
+    kaddref(pa);
+    if (mappages(new, i, PGSIZE, pa, flags) != 0) {
+      kfree((void *)pa);
       goto err;
     }
+    *pte = PA2PTE(pa) | flags;
   }
+  sfence_vma();
   return 0;
-
 err:
   uvmunmap(new, 0, i / PGSIZE, 1);
+  sfence_vma();
+  // Parent mappings already made COW remain valid; no data was lost.
   return -1;
 }
 
@@ -360,9 +358,14 @@ copyout(pagetable_t pagetable, uint64 psz, uint64 dstva, char *src, uint64 len)
     }
 
     pte = walk(pagetable, va0, 0);
-    // forbid copyout over read-only user text pages.
-    if ((*pte & PTE_W) == 0)
-      return -1;
+    // Kernel writes must split COW too, rather than corrupt a sibling.
+    if ((*pte & PTE_W) == 0) {
+      if ((pa0 = vmfault(pagetable, psz, va0, 0)) == 0)
+        return -1;
+      pte = walk(pagetable, va0, 0);
+      if (!pte || !(*pte & PTE_W))
+        return -1;
+    }
 
     n = PGSIZE - (dstva - va0);
     if (n > len)
@@ -463,8 +466,21 @@ vmfault(pagetable_t pagetable, uint64 psz, uint64 va, int read)
   if (va >= psz)
     return 0;
   va = PGROUNDDOWN(va);
-  if (ismapped(pagetable, va)) {
+  if (va >= MAXVA)
     return 0;
+  pte_t *pte = walk(pagetable, va, 0);
+  if (pte && (*pte & PTE_V)) {
+    if (read || (*pte & (PTE_U | PTE_COW)) != (PTE_U | PTE_COW))
+      return 0; // real read-only text and supervisor guard pages stay protected
+    uint64 old = PTE2PA(*pte);
+    mem = (uint64)kalloc();
+    if (!mem)
+      return 0;
+    memmove((void *)mem, (void *)old, PGSIZE);
+    *pte = PA2PTE(mem) | ((PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW);
+    sfence_vma();
+    kfree((void *)old);
+    return mem;
   }
   mem = (uint64)kalloc();
   if (mem == 0)
