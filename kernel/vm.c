@@ -158,7 +158,7 @@ vmprint_level(pagetable_t table, int level, uint64 base)
     uint64 va = base | ((uint64)i << PXSHIFT(level));
     for (int d = 2; d >= level; d--)
       printk(" ..");
-    printk("%p: pte %p pa %p", va, pte, PTE2PA(pte));
+    printk("%p: pte %p pa %p", (void *)va, (void *)pte, (void *)PTE2PA(pte));
     if (pte & (PTE_R | PTE_W | PTE_X)) {
       printk(" ");
       if (pte & PTE_R) printk("R");
