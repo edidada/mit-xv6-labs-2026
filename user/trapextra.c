@@ -31,7 +31,7 @@ main(int argc, char **argv)
 {
   check(sigreturn() == -1);
   if (argc == 2) {
-    spin(4);
+    spin(14);
     check(count == 0);
     printf("trapextra: exec reset OK\n");
     exit(0);
@@ -52,6 +52,7 @@ main(int argc, char **argv)
   check(pid >= 0);
   if (pid == 0) {
     // Newly allocated child has no alarm configuration.
+    count = 0;
     spin(4);
     check(count == 0);
     exit(0);
@@ -60,7 +61,7 @@ main(int argc, char **argv)
   check(wait(&status) == pid && status == 0);
   check(sigalarm(0, 0) == 0);
   count = 0;
-  check(sigalarm(1, handler) == 0);
+  check(sigalarm(10, handler) == 0);
   char *args[] = {"trapextra", "exec", 0};
   exec("trapextra", args);
   exit(1);

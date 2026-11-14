@@ -35,6 +35,8 @@ jobs:
               r.match('^HE110 World','^trapextra: exec reset OK',no=['trapextra: FAIL','panic:'])
           run_tests()
           PY
+      - name: GDB verifies all user registers after sigreturn
+        run: bash scripts/verify_alarm_registers.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
