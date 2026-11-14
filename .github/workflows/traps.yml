@@ -26,13 +26,29 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re, json, subprocess
           from gradelib import Runner, save, shell_script, test, run_tests
           Path('evidence').mkdir(exist_ok=True)
           r=Runner(save('evidence/extra.txt'))
           @test(1, 'independent alarm lifecycle')
           def test_extra():
-              r.run_qemu(shell_script(['trapextra']),timeout=30)
-              r.match('^HE110 World','^trapextra: exec reset OK',no=['trapextra: FAIL','panic:'])
+              r.run_qemu(shell_script(['bttest','call','trapextra']),timeout=30)
+              r.match('^12 13','^HE110 World','^trapextra: exec reset OK',no=['trapextra: FAIL','panic:'])
+              addresses=re.findall(r'^(0x000000008[0-9a-f]+)',r.qemu.output,re.M)
+              assert len(addresses)==3,addresses
+              resolved=[]
+              for addr,expected in zip(addresses,['sysproc.c','syscall.c','trap.c']):
+                  text=subprocess.check_output(['riscv64-linux-gnu-addr2line','-f','-e','kernel/kernel',addr],text=True)
+                  assert expected in text,text
+                  resolved.append({'address':addr,'resolved':text})
+              Path('evidence/backtrace.json').write_text(json.dumps(resolved,indent=2)+'\n')
+              asm=Path('user/call.asm').read_text()
+              main=asm.split('<main>:',1)[1].split('<start>:',1)[0]
+              assert re.search(r'li\s+a2,13',main) and re.search(r'li\s+a1,12',main)
+              assert not re.search(r'\b(?:jal|jalr).*<(?:f|g)>',main)
+              assert re.search(r'000000000000070e <printf>:',asm)
+              assert re.search(r'30:.*jal\s+70e <printf>',main)
+              Path('evidence/assembly-results.json').write_text(json.dumps({'printf_address':'0x70e','main_printf_call':'0x30','return_address':'0x34','instruction':'relaxed jal','f_g_inlined':True,'argument_13':'a2','endian_output':'HE110 World'},indent=2)+'\n')
           run_tests()
           PY
       - name: GDB verifies all user registers after sigreturn
