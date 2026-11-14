@@ -367,6 +367,14 @@ sfence_vma()
   asm volatile("sfence.vma zero, zero" ::: "memory");
 }
 
+static inline uint64
+r_fp(void)
+{
+  uint64 x;
+  asm volatile("mv %0, s0" : "=r"(x));
+  return x;
+}
+
 // fence for memory-mapped IO
 static inline void
 io_fence()

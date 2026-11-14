@@ -140,6 +140,7 @@ panic(char *s)
   panicking = 1;
   printk("panic: ");
   printk("%s\n", s);
+  backtrace();
   panicked = 1; // freeze uart output from other CPUs
   for (;;)
     ;
@@ -149,4 +150,22 @@ void
 printkinit(void)
 {
   initlock(&pr.lock, "pr");
+}
+
+// Walk only aligned, monotonically increasing frame pointers within this
+// stack page. Never follow a corrupt frame into a guard page or another stack.
+void
+backtrace(void)
+{
+  uint64 fp = r_fp();
+  uint64 low = PGROUNDDOWN(fp), high = low + PGSIZE;
+  printk("backtrace:\n");
+  while (fp >= low + 16 && fp <= high && (fp & 7) == 0) {
+    uint64 ra = *(uint64 *)(fp - 8);
+    uint64 prev = *(uint64 *)(fp - 16);
+    printk("%p\n", (void *)ra);
+    if (prev <= fp || prev > high)
+      break;
+    fp = prev;
+  }
 }

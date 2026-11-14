@@ -1,0 +1,34 @@
+name: MIT 6.1810 2026 traps
+on:
+  push:
+    branches: [edidada/traps]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  grade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-linux-gnu binutils-riscv64-linux-gnu qemu-system-misc gdb-multiarch python3 bc
+      - name: Original full grade
+        run: |
+          set -o pipefail
+          make grade TOOLPREFIX=riscv64-linux-gnu- 2>&1 | tee traps-grade.txt
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          assert re.search(r'Score:\s*95/95',Path('traps-grade.txt').read_text())
+          assert 'ALL TESTS PASSED' in Path('xv6.out').read_text()
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: traps-2026-results
+          path: |
+            traps-grade.txt
+            xv6.out*
+            user/call.asm
+            user/call.sym
+            kernel/kernel.sym
