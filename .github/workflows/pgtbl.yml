@@ -1,0 +1,32 @@
+name: MIT 6.1810 2026 pgtbl
+on:
+  push:
+    branches: [edidada/pgtbl]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  grade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-linux-gnu binutils-riscv64-linux-gnu qemu-system-misc gdb-multiarch python3 bc
+      - name: Original full grade
+        run: |
+          set -o pipefail
+          make grade TOOLPREFIX=riscv64-linux-gnu- 2>&1 | tee pgtbl-grade.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          text=Path('pgtbl-grade.txt').read_text()
+          assert re.search(r'Score:\s*46/46',text),text
+          assert 'usertests: OK' in text,text
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pgtbl-2026-results
+          path: |
+            pgtbl-grade.txt
+            xv6.out*

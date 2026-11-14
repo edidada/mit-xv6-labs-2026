@@ -110,7 +110,48 @@ sys_vmprint(void)
 int
 sys_pgaccess(void)
 {
-  // lab pgtbl: your code here.
+  enum { MAXSCAN = 4096 };
+  uint64 start, dest;
+  int count;
+  uchar bits[MAXSCAN / 8];
+  struct proc *p = myproc();
+  argaddr(0, &start);
+  argint(1, &count);
+  argaddr(2, &dest);
+  if (count <= 0 || count > MAXSCAN || start >= MAXVA)
+    return -1;
+  start = PGROUNDDOWN(start);
+  if ((uint64)count > (MAXVA - start) / PGSIZE)
+    return -1;
+  uint64 bytes = ((uint64)count + 7) / 8;
+  if (dest >= MAXVA || bytes > MAXVA - dest)
+    return -1;
+  // Validate the entire source and destination before clearing any A bits.
+  // Do not materialize lazy pages: the requested page must already be mapped.
+  for (int i = 0; i < count; i++) {
+    pte_t *pte = walk(p->pagetable, start + (uint64)i * PGSIZE, 0);
+    if (!pte || !(*pte & PTE_V) || !(*pte & PTE_U) || !PTE_LEAF(*pte))
+      return -1;
+  }
+  for (uint64 va = PGROUNDDOWN(dest); va <= PGROUNDDOWN(dest + bytes - 1);
+       va += PGSIZE) {
+    pte_t *pte = walk(p->pagetable, va, 0);
+    if (!pte || (*pte & (PTE_V | PTE_U | PTE_W)) != (PTE_V | PTE_U | PTE_W))
+      return -1;
+  }
+  memset(bits, 0, sizeof(bits));
+  for (int i = 0; i < count; i++) {
+    pte_t *pte = walk(p->pagetable, start + (uint64)i * PGSIZE, 0);
+    if (*pte & PTE_A)
+      bits[i / 8] |= 1U << (i % 8);
+  }
+  if (copyout(p->pagetable, p->sz, dest, (char *)bits, bytes) < 0)
+    return -1;
+  for (int i = 0; i < count; i++) {
+    pte_t *pte = walk(p->pagetable, start + (uint64)i * PGSIZE, 0);
+    *pte &= ~PTE_A;
+  }
+  sfence_vma();
   return 0;
 }
 #endif

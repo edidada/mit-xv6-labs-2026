@@ -148,10 +148,38 @@ walkaddr(pagetable_t pagetable, uint64 va)
 
 
 #if defined(LAB_PGTBL) || defined(SOL_MMAP) || defined(SOL_COW)
+static void
+vmprint_level(pagetable_t table, int level, uint64 base)
+{
+  for (int i = 0; i < 512; i++) {
+    pte_t pte = table[i];
+    if (!(pte & PTE_V))
+      continue;
+    uint64 va = base | ((uint64)i << PXSHIFT(level));
+    for (int d = 2; d >= level; d--)
+      printk(" ..");
+    printk("%p: pte %p pa %p", va, pte, PTE2PA(pte));
+    if (pte & (PTE_R | PTE_W | PTE_X)) {
+      printk(" ");
+      if (pte & PTE_R) printk("R");
+      if (pte & PTE_W) printk("W");
+      if (pte & PTE_X) printk("X");
+      if (pte & PTE_U) printk("U");
+      if (level > 0) printk(" superpage");
+      printk("\n");
+    } else {
+      printk("\n");
+      if (level > 0)
+        vmprint_level((pagetable_t)PTE2PA(pte), level - 1, va);
+    }
+  }
+}
+
 void
 vmprint(pagetable_t pagetable)
 {
-  // your code here
+  printk("page table %p\n", pagetable);
+  vmprint_level(pagetable, 2, 0);
 }
 #endif
 
@@ -162,8 +190,32 @@ vmprint(pagetable_t pagetable)
 void
 kvmmap(pagetable_t kpgtbl, uint64 va, uint64 pa, uint64 sz, int perm)
 {
-  if (mappages(kpgtbl, va, sz, pa, perm) != 0)
-    panic("kvmmap");
+  // Keep small pages at alignment and permission boundaries. Only a fully
+  // covered, VA/PA-aligned 2MiB span becomes a level-1 leaf.
+  while (sz > 0) {
+    uint64 step = PGSIZE;
+    if ((va % SUPERPGSIZE) == 0 && (pa % SUPERPGSIZE) == 0 &&
+        sz >= SUPERPGSIZE) {
+      pte_t *root = &kpgtbl[PX(2, va)];
+      if (!(*root & PTE_V)) {
+        pagetable_t next = (pagetable_t)kalloc();
+        if (!next) panic("kvmmap alloc");
+        memset(next, 0, PGSIZE);
+        *root = PA2PTE(next) | PTE_V;
+      }
+      if (PTE_LEAF(*root)) panic("kvmmap root leaf");
+      pagetable_t next = (pagetable_t)PTE2PA(*root);
+      pte_t *pte = &next[PX(1, va)];
+      if (*pte & PTE_V) panic("kvmmap remap");
+      *pte = PA2PTE(pa) | perm | PTE_V;
+      step = SUPERPGSIZE;
+    } else if (mappages(kpgtbl, va, PGSIZE, pa, perm) != 0) {
+      panic("kvmmap");
+    }
+    va += step;
+    pa += step;
+    sz -= step;
+  }
 }
 
 // Create PTEs for virtual addresses starting at va that refer to
