@@ -254,6 +254,7 @@ endif
 
 ifeq ($(LAB),pgtbl)
 UPROGS += \
+	$U/_pgextra\
 	$U/_pgtbltest
 endif
 

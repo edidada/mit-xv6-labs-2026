@@ -23,6 +23,28 @@ jobs:
           assert re.search(r'Score:\s*46/46',text),text
           assert 'usertests: OK' in text,text
           PY
+      - name: Page table explanations and independent boundaries
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, re, subprocess
+          from gradelib import Runner, save, shell_script, test, run_tests
+          Path('evidence').mkdir(exist_ok=True)
+          r=Runner(save('evidence/page-tables.txt'))
+          @test(1, 'independent page table boundaries')
+          def extra():
+              r.run_qemu(shell_script(['pgtbltest','pgextra','echo EXTRADONE'],'EXTRADONE'),timeout=60)
+              r.match('^pgtbltest: all tests succeeded','^pgextra: PASS boundaries, clear, output width, RO/NX and exec',no=['pgextra: FAIL','panic:'])
+              text=r.qemu.output
+              m=re.search(r'pgextra: kernel super=(\d+) regular=(\d+) saved_table_pages=(\d+)',text)
+              assert m,text
+              assert int(m[1]) >= 93 and m[1] == m[3]
+              entries=re.findall(r'^va (0x[0-9a-f]+) pte (0x[0-9a-f]+) pa (0x[0-9a-f]+) perm (0x[0-9a-f]+)',text,re.M)
+              assert len(entries)==20,entries
+              Path('evidence/results.json').write_text(json.dumps({'superpages':int(m[1]),'regular_leaf_ptes':int(m[2]),'saved_bottom_table_pages':int(m[3]),'page_table_entries':entries,'boundaries':'passed'},indent=2)+'\n')
+              Path('evidence/commit.txt').write_text(subprocess.check_output(['git','rev-parse','HEAD'],text=True))
+          run_tests()
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -30,3 +52,4 @@ jobs:
           path: |
             pgtbl-grade.txt
             xv6.out*
+            evidence/
