@@ -6,6 +6,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "vm.h"
+#include "syscall.h"
 
 uint64
 sys_exit(void)
@@ -109,4 +110,23 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+// Policies may tighten, never restore a previously denied syscall or widen
+// an existing pathname exception. Invalid requests leave the policy intact.
+uint64
+sys_interpose(void)
+{
+  int mask;
+  char path[MAXPATH];
+  struct proc *p = myproc();
+  argint(0, &mask);
+  if (argstr(1, path, sizeof(path)) < 0)
+    return -1;
+  if ((p->sandbox_mask & ((1U << SYS_open) | (1U << SYS_exec))) &&
+      strcmp(path, p->sandbox_path) != 0 && strcmp(path, "-") != 0)
+    return -1;
+  p->sandbox_mask |= (uint)mask;
+  safestrcpy(p->sandbox_path, path, sizeof(p->sandbox_path));
+  return 0;
 }

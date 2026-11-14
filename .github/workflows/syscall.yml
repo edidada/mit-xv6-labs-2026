@@ -1,0 +1,32 @@
+name: MIT 6.1810 2026 syscall
+on:
+  push:
+    branches: [edidada/syscall]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  grade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-linux-gnu binutils-riscv64-linux-gnu qemu-system-misc gdb-multiarch python3 bc
+      - name: Official grader
+        run: |
+          set -o pipefail
+          make grade TOOLPREFIX=riscv64-linux-gnu- 2>&1 | tee syscall-grade.txt
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text=Path('syscall-grade.txt').read_text()
+          scores=re.findall(r'Score:\s*(\d+)\s*/\s*(\d+)',text)
+          assert scores and scores[-1][0]==scores[-1][1],text
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: syscall-2026-results
+          path: |
+            syscall-grade.txt
+            xv6.out*

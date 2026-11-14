@@ -1,0 +1,7 @@
+2026 syscall GDB questions (source conclusions; runtime addresses pending CI GDB):
+1. usertrap calls syscall after a user ecall.
+2. The first init syscall is fork (a7=SYS_fork=1); verify against user/init.asm and the first GDB stop.
+3. sstatus.SPP is zero on entry from user mode, indicating previous mode U.
+4. A deliberate *(int *)0 load faults: its exact instruction/register/address depend on this compiler. These must be recorded from the CI null-load experiment, not copied from the handout.
+5. VA 0 is not mapped in the kernel page table. scause 13 is load page fault, stval 0 is the faulting virtual address.
+6. The first process should be init, pid 1; verify from GDB.
