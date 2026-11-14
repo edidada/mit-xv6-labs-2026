@@ -23,6 +23,14 @@ jobs:
           scores=re.findall(r'Score:\s*(\d+)\s*/\s*(\d+)',text)
           assert scores and scores[-1][0]==scores[-1][1],text
           PY
+      - name: Independent sandbox boundaries
+        run: |
+          python3 - <<'PY'
+          from gradelib import Runner, save, shell_script
+          r=Runner(save('evidence-sandbox-extra.txt'))
+          r.run_qemu(shell_script(['sbextra', 'echo EXTRADONE'], 'EXTRADONE'))
+          r.match('^sbextra: PASS 96 isolated scenarios', no=['sbextra: FAIL', 'panic:'])
+          PY
       - name: GDB normal and deliberate null-load experiment
         run: bash scripts/diagnose_syscall.sh
       - uses: actions/upload-artifact@v4
@@ -33,3 +41,4 @@ jobs:
             syscall-grade.txt
             xv6.out*
             evidence/
+            evidence-sandbox-extra.txt

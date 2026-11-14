@@ -211,6 +211,7 @@ ifeq ($(LAB),syscall)
 UPROGS += \
 	$U/_sandbox\
 	$U/_sbtest\
+	$U/_sbextra\
 	$U/_attack\
 	$U/_secret
 endif
