@@ -22,6 +22,19 @@ jobs:
           assert re.search(r'Score:\s*95/95',Path('traps-grade.txt').read_text())
           assert 'ALL TESTS PASSED' in Path('xv6.out').read_text()
           PY
+      - name: Independent alarm lifecycle and endian example
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from gradelib import Runner, save, shell_script, test, run_tests
+          Path('evidence').mkdir(exist_ok=True)
+          r=Runner(save('evidence/extra.txt'))
+          @test(1, 'independent alarm lifecycle')
+          def test_extra():
+              r.run_qemu(shell_script(['trapextra']),timeout=30)
+              r.match('^HE110 World','^trapextra: exec reset OK',no=['trapextra: FAIL','panic:'])
+          run_tests()
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -32,3 +45,4 @@ jobs:
             user/call.asm
             user/call.sym
             kernel/kernel.sym
+            evidence/

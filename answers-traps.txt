@@ -3,5 +3,5 @@ RISC-V assembly answers; exact compiler addresses will be recorded from remote c
 2. GCC may inline f and g in main, replacing f(8)+1 with constant 12. The standalone f/g functions may still exist without being called by main. Inspect the actual remote disassembly.
 3. printf address: pending remote call.asm/call.sym, not copied from a different toolchain.
 4. ra after main's jalr is the following instruction address (jalr PC+4); exact value pending disassembly.
-5. Little endian i bytes 72 6c 64 00 spell rld, 57616 hex is e110, so output is He110 World. Big endian use i=0x726c6400, keep 57616 unchanged because integer hex formatting is independent of byte order.
+5. Little endian i bytes 72 6c 64 00 spell rld, 57616 hex is E110 (this printf uses uppercase digits), so output is HE110 World. Big endian use i=0x726c6400, keep 57616 unchanged because integer hex formatting is independent of byte order.
 6. printf("x=%d y=%d",3) has no second integer argument; its variadic access has undefined behavior. No specific value after y= is guaranteed (it may observe an unrelated a2 value).

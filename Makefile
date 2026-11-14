@@ -221,6 +221,7 @@ endif
 ifeq ($(LAB),traps)
 UPROGS += \
 	$U/_call\
+	$U/_trapextra\
 	$U/_alarmtest\
 	$U/_bttest
 endif
