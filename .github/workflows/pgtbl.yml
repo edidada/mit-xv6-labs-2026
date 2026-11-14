@@ -21,7 +21,7 @@ jobs:
           import re
           text=Path('pgtbl-grade.txt').read_text()
           assert re.search(r'Score:\s*46/46',text),text
-          assert 'usertests: OK' in text,text
+          assert 'ALL TESTS PASSED' in Path('xv6.out').read_text()
           PY
       - name: Page table explanations and independent boundaries
         run: |
