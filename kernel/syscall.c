@@ -150,9 +150,9 @@ syscall(void)
       // Only pathname-based calls have an exception. Copy from user memory;
       // invalid or unterminated strings must never bypass the restriction.
       if ((num != SYS_open && num != SYS_exec) ||
-          strcmp(p->sandbox_path, "-") == 0 ||
+          strncmp(p->sandbox_path, "-", MAXPATH) == 0 ||
           argstr(0, path, sizeof(path)) < 0 ||
-          strcmp(path, p->sandbox_path) != 0) {
+          strncmp(path, p->sandbox_path, MAXPATH) != 0) {
         p->trapframe->a0 = -1;
         return;
       }

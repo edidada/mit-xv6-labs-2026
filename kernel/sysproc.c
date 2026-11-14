@@ -124,7 +124,7 @@ sys_interpose(void)
   if (argstr(1, path, sizeof(path)) < 0)
     return -1;
   if ((p->sandbox_mask & ((1U << SYS_open) | (1U << SYS_exec))) &&
-      strcmp(path, p->sandbox_path) != 0 && strcmp(path, "-") != 0)
+      strncmp(path, p->sandbox_path, MAXPATH) != 0 && strncmp(path, "-", MAXPATH) != 0)
     return -1;
   p->sandbox_mask |= (uint)mask;
   safestrcpy(p->sandbox_path, path, sizeof(p->sandbox_path));
