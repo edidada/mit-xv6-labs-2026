@@ -19,6 +19,27 @@ static uint32 local_ip = MAKE_IP_ADDR(10, 0, 2, 15);
 static uint8 host_mac[ETHADDR_LEN] = { 0x52, 0x55, 0x0a, 0x00, 0x02, 0x02 };
 
 static struct spinlock netlock;
+#define NPORT 128
+#define NPACKET 16
+// Metadata occupies discarded headers, not the UDP payload.
+struct packet {
+  struct packet *next;
+  uint32 src;
+  uint16 sport, len, offset;
+};
+static struct port {
+  int bound, number, count;
+  uint64 generation;
+  struct packet *head, *tail;
+} ports[NPORT];
+
+static struct port *
+findport(int number)
+{
+  for(int i = 0; i < NPORT; i++)
+    if(ports[i].bound && ports[i].number == number) return &ports[i];
+  return 0;
+}
 
 void
 netinit(void)
@@ -35,10 +56,27 @@ netinit(void)
 uint64
 sys_bind(void)
 {
-  //
-  // Your code here.
-  //
-
+  int number;
+  argint(0, &number);
+  if(number < 0 || number > 65535) return -1;
+  acquire(&netlock);
+  if(findport(number)){
+    release(&netlock);
+    return -1;
+  }
+  for(int i = 0; i < NPORT; i++){
+    if(!ports[i].bound){
+      struct port *q = &ports[i];
+      q->bound = 1;
+      q->number = number;
+      q->generation++;
+      q->head = q->tail = 0;
+      q->count = 0;
+      release(&netlock);
+      return 0;
+    }
+  }
+  release(&netlock);
   return -1;
 }
 
@@ -50,10 +88,23 @@ sys_bind(void)
 uint64
 sys_unbind(void)
 {
-  //
-  // Your code here.
-  //
-
+  int number;
+  argint(0, &number);
+  acquire(&netlock);
+  struct port *q = findport(number);
+  if(!q){ release(&netlock); return -1; }
+  struct packet *pkt = q->head;
+  while(pkt){
+    struct packet *next = pkt->next;
+    kfree((char *)pkt);
+    pkt = next;
+  }
+  q->head = q->tail = 0;
+  q->count = 0;
+  q->bound = 0;
+  q->generation++;
+  wakeup(q);
+  release(&netlock);
   return 0;
 }
 
@@ -75,10 +126,45 @@ sys_unbind(void)
 uint64
 sys_recv(void)
 {
-  //
-  // Your code here.
-  //
-  return -1;
+  int number, maxlen;
+  uint64 srcaddr, sportaddr, bufaddr;
+  argint(0, &number);
+  argaddr(1, &srcaddr);
+  argaddr(2, &sportaddr);
+  argaddr(3, &bufaddr);
+  argint(4, &maxlen);
+  if(maxlen < 0) return -1;
+  struct proc *p = myproc();
+  acquire(&netlock);
+  struct port *q = findport(number);
+  if(!q){ release(&netlock); return -1; }
+  uint64 generation = q->generation;
+  while(q->head == 0){
+    if(killed(p) || !q->bound || q->generation != generation){
+      release(&netlock);
+      return -1;
+    }
+    sleep_prepare(q);
+    release(&netlock);
+    sleep();
+    acquire(&netlock);
+  }
+  // Unbind/rebind may have happened while this receiver was asleep.
+  if(!q->bound || q->generation != generation){
+    release(&netlock);
+    return -1;
+  }
+  struct packet *pkt = q->head;
+  q->head = pkt->next;
+  if(!q->head) q->tail = 0;
+  q->count--;
+  release(&netlock);
+  int n = pkt->len < maxlen ? pkt->len : maxlen;
+  int failed = copyout(p->pagetable, p->sz, srcaddr, (char *)&pkt->src, sizeof(pkt->src)) < 0 ||
+    copyout(p->pagetable, p->sz, sportaddr, (char *)&pkt->sport, sizeof(pkt->sport)) < 0 ||
+    copyout(p->pagetable, p->sz, bufaddr, (char *)pkt + pkt->offset, n) < 0;
+  kfree((char *)pkt);
+  return failed ? -1 : n;
 }
 
 // This code is lifted from FreeBSD's ping.c, and is copyright by the Regents
@@ -135,6 +221,7 @@ sys_send(void)
   argaddr(3, &bufaddr);
   argint(4, &len);
 
+  if(len < 0 || len > PGSIZE - sizeof(struct eth) - sizeof(struct ip) - sizeof(struct udp)) return -1;
   int total = len + sizeof(struct eth) + sizeof(struct ip) + sizeof(struct udp);
   if(total > PGSIZE)
     return -1;
@@ -191,10 +278,42 @@ ip_rx(char *buf, int len)
 
   printk("."); // help Tulip receive debugging; delete if you want to.
 
-  //
-  // Your code here.
-  //
-  
+  struct ip *ip = (struct ip *)(buf + sizeof(struct eth));
+  int ihl = (ip->ip_vhl & 15) * 4;
+  int iplen = ntohs(ip->ip_len);
+  if((ip->ip_vhl >> 4) != 4 || ihl < sizeof(*ip) ||
+     iplen < ihl + sizeof(struct udp) || iplen > len - sizeof(struct eth) ||
+     ip->ip_p != IPPROTO_UDP || (ntohs(ip->ip_off) & 0x3fff) ||
+     ntohl(ip->ip_dst) != local_ip){
+    kfree(buf);
+    return;
+  }
+  struct udp *udp = (struct udp *)((char *)ip + ihl);
+  int ulen = ntohs(udp->ulen);
+  if(ulen < sizeof(*udp) || ulen > iplen - ihl){ kfree(buf); return; }
+  uint32 src = ntohl(ip->ip_src);
+  uint16 sport = ntohs(udp->sport);
+  int dport = ntohs(udp->dport);
+  int offset = (char *)(udp+1) - buf;
+  acquire(&netlock);
+  struct port *q = findport(dport);
+  if(!q || q->count == NPACKET){
+    release(&netlock);
+    kfree(buf);
+    return;
+  }
+  struct packet *pkt = (struct packet *)buf;
+  pkt->next = 0;
+  pkt->src = src;
+  pkt->sport = sport;
+  pkt->len = ulen - sizeof(*udp);
+  pkt->offset = offset;
+  if(q->tail) q->tail->next = pkt;
+  else q->head = pkt;
+  q->tail = pkt;
+  q->count++;
+  wakeup(q);
+  release(&netlock);
 }
 
 //
@@ -252,6 +371,7 @@ arp_rx(char *inbuf)
 void
 net_rx(char *buf, int len)
 {
+  if(len < sizeof(struct eth)){ kfree(buf); return; }
   struct eth *eth = (struct eth *) buf;
 
   if(len >= sizeof(struct eth) + sizeof(struct arp) &&

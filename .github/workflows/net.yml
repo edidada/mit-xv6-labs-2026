@@ -1,0 +1,31 @@
+name: MIT 6.1810 2026 networking
+on:
+  push:
+    branches: [edidada/net]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  grade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-linux-gnu binutils-riscv64-linux-gnu qemu-system-misc python3 bc tcpdump
+      - name: Original networking grade
+        run: |
+          set -o pipefail
+          make grade TOOLPREFIX=riscv64-linux-gnu- 2>&1 | tee net-grade.txt
+          grep -Eq 'Score: *171/171' net-grade.txt
+          git rev-parse HEAD > commit.txt
+          tcpdump -nn -r packets.pcap > packets.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: net-2026-results
+          path: |
+            net-grade.txt
+            commit.txt
+            xv6.out*
+            packets.pcap
+            packets.txt

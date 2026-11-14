@@ -1,4 +1,8 @@
-on: [push, pull_request]
+on:
+  push:
+    branches: [riscv, util, syscall, pgtbl, traps, cow, net, lock, fs, mmap]
+  pull_request:
+    branches: [riscv]
 
 jobs:
   linux:

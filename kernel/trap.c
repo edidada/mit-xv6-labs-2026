@@ -201,6 +201,9 @@ devintr()
     } else if (irq == VIRTIO0_IRQ) {
       virtio_disk_intr();
     }
+    else if (irq == 33) {
+      tulip_intr();
+    }
     else if (irq) {
       printk("unexpected interrupt irq=%d\n", irq);
     }
