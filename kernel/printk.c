@@ -160,11 +160,11 @@ backtrace(void)
   uint64 fp = r_fp();
   uint64 low = PGROUNDDOWN(fp), high = low + PGSIZE;
   printk("backtrace:\n");
-  while (fp >= low + 16 && fp <= high && (fp & 7) == 0) {
+  while (fp >= low + 16 && fp < high && (fp & 7) == 0) {
     uint64 ra = *(uint64 *)(fp - 8);
     uint64 prev = *(uint64 *)(fp - 16);
     printk("%p\n", (void *)ra);
-    if (prev <= fp || prev > high)
+    if (prev <= fp || prev >= high)
       break;
     fp = prev;
   }
