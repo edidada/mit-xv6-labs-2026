@@ -4,9 +4,11 @@ cd "$(dirname "$0")/.."
 mkdir -p evidence
 make kernel/kernel fs.img TOOLPREFIX=riscv64-linux-gnu-
 python3 - <<'PY'
-import os, signal, socket, subprocess, tempfile, time
+import os, re, json, signal, socket, subprocess, tempfile, time
 from pathlib import Path
 root=Path.cwd()
+(root/'evidence/commit.txt').write_text(subprocess.check_output(['git','rev-parse','HEAD'],text=True))
+(root/'evidence/init.asm').write_bytes((root/'user/init.asm').read_bytes())
 def diagnose(cwd, label, commands):
     script=root/'evidence'/f'{label}.gdb'
     script.write_text('set pagination off\nset confirm off\nset architecture riscv:rv64\nfile kernel/kernel\ntarget remote :26000\n'+commands+'\ndetach\nquit\n')
@@ -51,6 +53,15 @@ print /x $sepc
 x/i $sepc
 backtrace''')
     assert 'SCAUSE=13 STVAL=0' in fault,fault
-    (root/'evidence/null-kernel.asm').write_bytes((Path(tmp)/'kernel/kernel.asm').read_bytes())
+    asm=(Path(tmp)/'kernel/kernel.asm').read_text()
+    (root/'evidence/null-kernel.asm').write_text(asm)
+    m=re.search(r'0x([0-9a-f]+) <syscall\+\d+>:\s*([^\n]+)',fault)
+    assert m,fault
+    pc,ins=m.groups()
+    line=re.search(r'^\s*'+pc+r':\s+[0-9a-f]+\s+([^\n]+)',asm,re.M)
+    assert line,pc
+    normalize=lambda x: re.sub(r'\s+','',x.split('#')[0])
+    assert normalize(ins)==normalize(line[1]),(ins,line[1])
+    (root/'evidence/gdb-results.json').write_text(json.dumps({'normal_first_syscall':15,'previous_mode':'U','fault_scause':13,'fault_stval':0,'fault_process':'init','fault_pid':1,'fault_pc':pc,'fault_instruction':ins.strip(),'asm_agrees':True},indent=2)+'\n')
 print('PASS: normal first syscall, user previous mode, deliberate null-load and process identity')
 PY

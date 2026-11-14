@@ -1,7 +1,8 @@
-2026 syscall GDB questions (source conclusions; runtime addresses pending CI GDB):
-1. usertrap calls syscall after a user ecall.
-2. The first init syscall is open (a7=SYS_open=15); verify against user/init.asm and the first GDB stop.
-3. sstatus.SPP is zero on entry from user mode, indicating previous mode U.
-4. A deliberate *(int *)0 load faults: its exact instruction/register/address depend on this compiler. These must be recorded from the CI null-load experiment, not copied from the handout.
-5. VA 0 is not mapped in the kernel page table. scause 13 is load page fault, stval 0 is the faulting virtual address.
-6. The first process should be init, pid 1; verify from GDB.
+2026 syscall: verified on GitHub Actions with riscv64-linux-gnu GCC and QEMU.
+Evidence baseline b4972f821d481c61114dde64ff392c8616411959, run 43557901617.
+1. Backtrace: usertrap() calls syscall() (kernel/trap.c:68), following user ecall.
+2. First init syscall: a7=15, SYS_open. user/init.c opens console before fork; user/init.asm contains the generated open stub call.
+3. sstatus=0x200000022; SPP bit 8 is 0, indicating the previous privilege mode was user mode (U).
+4. In a disposable source copy only, replacing the a7 read with *(volatile int *)0 yields sepc=0x80001d76, instruction lw a5,0(zero). a5 is the compiler's destination register for num at the failing load. GDB instruction and kernel.asm must agree; addresses/register allocation are toolchain-dependent, not constants required by xv6.
+5. Kernel VA 0 is unmapped. scause=13 means load page fault; stval=0 identifies the faulting virtual address. The user process may map address 0, but this supervisor load uses the kernel page table.
+6. At the fault: process name init, pid=1. The source copy is discarded after diagnosis, so the final kernel retains the correct a7 load.
