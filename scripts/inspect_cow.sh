@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p evidence
 python3 - <<'PY'
-import os, signal, socket, subprocess, time
+import os, signal, socket, subprocess, time, threading
 from pathlib import Path
 commands=r'''set pagination off
 set confirm off
@@ -72,7 +72,14 @@ quit
 Path('evidence/sharing.gdb').write_text(commands)
 with Path('evidence/sharing-qemu.txt').open('w') as out:
     q=subprocess.Popen(['make','qemu-gdb','TOOLPREFIX=riscv64-linux-gnu-','CPUS=1','GDBPORT=26000'],stdin=subprocess.PIPE,stdout=out,stderr=subprocess.STDOUT,start_new_session=True)
-    q.stdin.write(b"cowextra\n");q.stdin.flush()
+    def feed_shell():
+        for _ in range(600):
+            if q.poll() is not None:return
+            if '$ ' in Path('evidence/sharing-qemu.txt').read_text():
+                q.stdin.write(b"cowextra\n");q.stdin.flush()
+                return
+            time.sleep(.1)
+    threading.Thread(target=feed_shell,daemon=True).start()
     try:
         for _ in range(100):
             if q.poll() is not None:raise RuntimeError('QEMU exited')
