@@ -3,3 +3,17 @@ print_pgtbl: leaf text pages are RXU (read/execute user, no writes); data/heap a
 vmprint reconstructs VA from each index and level, prints only V entries and does not recurse into leaves. Sv39 uses levels 2/1/0 even though the handout heading mentions two-level. Level-1 leaves cover aligned 2MiB with unchanged permission boundaries.
 ugetpid reads the process-private USYSCALL page. Fork allocates a new page with the child's PID; exec reuses that process page in its new table; teardown unmaps without double freeing and frees the owner page. Other candidates include stable process metadata such as parent PID (requires reparent updates), or uptime via a separately shared kernel-updated clock page; consistency/races require a protocol.
 Kernel superpage counts and saved bottom-level pages must be measured from the resulting table, not inferred from the grader threshold. One 2MiB leaf replaces 512 4KiB leaf PTEs and saves one level-0 page-table page for that fully covered region.
+
+Observed print_pgtbl and vmprint in run43581178049 (VA categories remain stable; physical pages vary):
+VA 0x0000: text, perm 0x5B = V/R/X/U/A, user read+execute, no write.
+VA 0x1000: text, perm 0x1B = V/R/X/U, same permissions, not accessed yet at this snapshot.
+VA 0x2000: initialized data/BSS, perm 0x17 = V/R/W/U, user read+write, no execute.
+VA 0x3000: stack guard, perm 0x07 = V/R/W without U, inaccessible to userspace.
+VA 0x4000: initial user stack, perm 0xD7 = V/R/W/U/A/D, user read+write, no execute.
+VA 0x5000,0x6000,0x7000,0x8000,0x9000: all PTE/PA/perm zero, not mapped before heap growth.
+VA 0x3FFFFF6000,0x3FFFFF7000,0x3FFFFF8000,0x3FFFFF9000,0x3FFFFFA000,0x3FFFFFB000,0x3FFFFFC000: all PTE/PA/perm zero, unmapped high-user gap.
+VA 0x3FFFFFD000: USYSCALL, perm 0x13 = V/R/U; PID shared read-only, user writes and instruction fetch forbidden.
+VA 0x3FFFFFE000: TRAPFRAME, perm 0xC7 = V/R/W/A/D without U; supervisor saves/restores registers, user access forbidden.
+VA 0x3FFFFFF000: TRAMPOLINE, perm 0x4B = V/R/X/A without U; supervisor trap entry/return code, no writes or direct user access.
+The vmprint leaves show the same VA/PTE/PA values with permission letters in R,W,X,U order. A and D are hardware state, not extra access rights. Intermediate entries are V-only and give the next table's PA: root indices 0/255, then level-1 indices 0/511. Physical pages are noncontiguous because allocation order differs from VA order.
+The live stats interface reports 95 level-1 superpage leaves and 579 regular leaf PTEs: 32 superpages for the 64MiB PLIC range and 63 for aligned full RAM spans after the mixed text/data head. Each saves one bottom-level table page, 95 pages (389120 bytes) total. The separate GDB inspector validates the full mapping and compares all-4KiB baseline table counts with actual table counts; final acceptance requires its CI success.
