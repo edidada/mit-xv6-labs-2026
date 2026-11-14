@@ -63,21 +63,38 @@ tulip_xmit(char *buf, int len)
 {
   acquire(&txlock);
   reclaim();
-  int i = txnext;
-  if(len <= 0 || len > PGSIZE || (tx[i].status & OWN)){
+  int needed = (len + 2046) / 2047;
+  if(len <= 0 || len > PGSIZE){
     release(&txlock);
-    kfree(buf); // nonblocking: ownership is always consumed, including drops
+    kfree(buf);
     return;
   }
-  txbuf[i] = buf;
-  tx[i].address = (uint64)buf;
-  int first = len > 2047 ? 2047 : len;
-  tx[i].second = len > first ? (uint64)(buf + first) : 0;
-  tx[i].control = first | ((len-first)<<11) | (i == NRING-1 ? END : 0) | (1U<<31) | (1<<30) | (1<<29);
+  for(int j = 0; j < needed; j++){
+    if(tx[(txnext+j)%NRING].status & OWN){
+      release(&txlock);
+      kfree(buf);
+      return;
+    }
+  }
+  int offset = 0;
+  for(int j = 0; j < needed; j++){
+    int i = (txnext+j)%NRING;
+    int n = len-offset > 2047 ? 2047 : len-offset;
+    // Only the final descriptor owns the allocation. Completion is in order.
+    txbuf[i] = j == needed-1 ? buf : 0;
+    tx[i].address = (uint64)(buf+offset);
+    tx[i].second = 0;
+    tx[i].control = n | (i == NRING-1 ? END : 0) |
+      (j == 0 ? (1<<29) : 0) |
+      (j == needed-1 ? (1U<<31) | (1<<30) : 0);
+    offset += n;
+  }
   __sync_synchronize();
-  tx[i].status = OWN;
+  // Publish the first descriptor last: hardware cannot see a partial chain.
+  for(int j = needed-1; j >= 0; j--)
+    tx[(txnext+j)%NRING].status = OWN;
   __sync_synchronize();
-  txnext = (i+1)%NRING;
+  txnext = (txnext+needed)%NRING;
   csr[1] = 1;
   release(&txlock);
 }
