@@ -20,7 +20,7 @@ def diagnose(cwd, label, commands):
                     break
                 except OSError:time.sleep(.1)
             else:raise TimeoutError('GDB port')
-            r=subprocess.run(['gdb-multiarch','-q','-batch','-x',str(script)],cwd=cwd,capture_output=True,text=True,timeout=60)
+            r=subprocess.run(['gdb-multiarch','-nx','-q','-batch','-x',str(script)],cwd=cwd,capture_output=True,text=True,timeout=60)
             text=r.stdout+r.stderr
             (root/'evidence'/f'{label}.txt').write_text(text)
             assert r.returncode==0,text
@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory() as tmp:
     p=Path(tmp)/'kernel/syscall.c';s=p.read_text();assert 'num = p->trapframe->a7;' in s
     p.write_text(s.replace('num = p->trapframe->a7;', 'num = *(volatile int *)0;'))
     subprocess.run(['make','kernel/kernel','fs.img','TOOLPREFIX=riscv64-linux-gnu-'],cwd=tmp,check=True)
-    fault=diagnose(tmp,'null-load', '''break kerneltrap
+    fault=diagnose(tmp,'null-load', '''break kerneltrap if $scause == 13
 continue
 set $p = cpus[0].proc
 printf "PID=%d NAME=%s SCAUSE=%d STVAL=%ld\\n", $p->pid, $p->name, $scause, $stval
