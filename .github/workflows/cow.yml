@@ -37,6 +37,8 @@ jobs:
               Path('evidence/commit.txt').write_text(subprocess.check_output(['git','rev-parse','HEAD'],text=True))
           run_tests()
           PY
+      - name: GDB proves physical sharing and write-fault split
+        run: bash scripts/inspect_cow.sh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
